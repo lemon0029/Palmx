@@ -19,17 +19,20 @@ import java.lang.reflect.Field;
 @Component
 public class PalmxBeanPostProcessor implements BeanPostProcessor, ApplicationContextAware {
 
-    static ServiceLocator serviceLocator = new DefaultServiceLocator();
-    static ServiceRegistry serviceRegistry = new ZookeeperServiceRegistry();
+    private final static ServiceLocator serviceLocator = new DefaultServiceLocator();
+    private final static ServiceRegistry serviceRegistry = new ZookeeperServiceRegistry();
 
-    ApplicationContext applicationContext;
+    private ApplicationContext applicationContext;
 
     @Override
     public Object postProcessBeforeInitialization(Object bean, @NonNull String beanName) throws BeansException {
         Class<?> aClass = bean.getClass();
+        // 若该类被 @PalmxService 注解所标识，则将对象加入到容器并且往注册中心注册该服务
         if (aClass.isAnnotationPresent(PalmxService.class)) {
             String serviceName = aClass.getInterfaces()[0].getName();
             DefaultServiceProvider.getInstance().addService(serviceName, bean);
+
+            // 获取单例池中的 PalmxServer 对象，然后获取当前服务的地址
             PalmxServer palmxServer = applicationContext.getBean(PalmxServer.class);
             serviceRegistry.register(serviceName, palmxServer.getAddress());
         }
@@ -40,8 +43,7 @@ public class PalmxBeanPostProcessor implements BeanPostProcessor, ApplicationCon
     public Object postProcessAfterInitialization(Object bean, @Nonnull String beanName) throws BeansException {
         Field[] fields = bean.getClass().getDeclaredFields();
         for (Field field : fields) {
-            // 若该字段被 RpcClient 注解所标识
-            // 则创建一个代理对象来注入值
+            // 若该字段被 @PalmxClient 注解所标识，则创建一个代理对象来注入
             if (field.isAnnotationPresent(PalmxClient.class)) {
                 Object proxyObject = serviceLocator.lookup(field.getType());
                 field.setAccessible(true);
